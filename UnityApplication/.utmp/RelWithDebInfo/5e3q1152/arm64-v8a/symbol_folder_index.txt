@@ -1,0 +1,1 @@
+C:\Users\chomu\Desktop\project\GitHub\ArduinoProject\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\build\intermediates\cxx\RelWithDebInfo\5e3q1152\obj\arm64-v8a
