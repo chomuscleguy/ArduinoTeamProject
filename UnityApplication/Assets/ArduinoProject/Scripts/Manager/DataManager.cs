@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
-using UnityEngine;
 using System.IO;
+using UnityEngine;
 
 public class DataManager : MonoBehaviour
 {
@@ -16,7 +16,7 @@ public class DataManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
-            jsonPath = Path.Combine(Application.persistentDataPath, "deviceData.json");
+            jsonPath = Path.Combine(Application.persistentDataPath, "device_data.json");
             LoadData();
         }
         else
@@ -27,54 +27,48 @@ public class DataManager : MonoBehaviour
 
     public void LoadData()
     {
-        if (File.Exists(jsonPath))
+        if (!File.Exists(jsonPath))
         {
-            Debug.Log("📁 JSON 파일에서 데이터 로딩 중...");
-            string json = File.ReadAllText(jsonPath);
-            List<DeviceData> dataList = JsonUtilityWrapper.FromJsonList<DeviceData>(json);
-            deviceData.Clear();
-            foreach (var data in dataList)
-            {
-                deviceData[data.Mac] = data;
-            }
+            BluetoothManager.Instance.Toast("📁 JSON 파일 없음. CSV에서 생성 중...");
+            LoadFromCSVAndSave();
         }
-        else
-        {
-            Debug.Log("📄 CSV에서 초기 데이터 로딩 중...");
-            LoadFromCSV();
-            SaveData();
-        }
+
+        string jsonContent = File.ReadAllText(jsonPath);
+        var loadedData = JsonUtility.FromJson<DeviceDataListWrapper>(jsonContent);
+        deviceData = loadedData.ToDictionary();
+        BluetoothManager.Instance.Toast("✅ JSON 로딩 완료.");
     }
 
     public void SaveData()
     {
         var dataList = new List<DeviceData>(deviceData.Values);
-        string json = JsonUtilityWrapper.ToJsonList(dataList, true);
-        File.WriteAllText(jsonPath, json);
-        Debug.Log("✅ JSON 저장 완료!");
+        var wrapper = new DeviceDataListWrapper { devices = dataList };
+        string jsonOutput = JsonUtility.ToJson(wrapper, true);
+        File.WriteAllText(jsonPath, jsonOutput);
+        BluetoothManager.Instance.Toast("✅ JSON 저장 완료!");
     }
 
-    private void LoadFromCSV()
+    private void LoadFromCSVAndSave()
     {
-        var csv = Resources.Load<TextAsset>("DB_Device");
+        TextAsset csv = Resources.Load<TextAsset>("DB/DB_Device");
         if (csv == null)
         {
-            Debug.LogError("⚠️ CSV 파일을 찾을 수 없습니다.");
+            BluetoothManager.Instance.Toast("⚠️ CSV 파일을 찾을 수 없습니다.");
             return;
         }
 
         string[] lines = csv.text.Split('\n');
         if (lines.Length <= 1) return;
 
-        string[] keys = lines[0].Split(',');
-
+        deviceData.Clear();
         for (int i = 1; i < lines.Length; i++)
         {
             if (string.IsNullOrWhiteSpace(lines[i])) continue;
 
             string[] values = lines[i].Split(',');
+            if (values.Length < 5) continue;
 
-            var data = new DeviceData
+            DeviceData data = new DeviceData
             {
                 Mac = values[0].Trim(),
                 index = int.Parse(values[1]),
@@ -88,5 +82,8 @@ public class DataManager : MonoBehaviour
                 deviceData[data.Mac] = data;
             }
         }
+
+        SaveData();
+        BluetoothManager.Instance.Toast("✅ CSV로부터 데이터 로드 및 JSON 생성 완료.");
     }
 }

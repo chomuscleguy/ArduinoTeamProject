@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Android;
@@ -7,25 +8,12 @@ using UnityEngine.UI;
 
 public class BluetoothManager : MonoBehaviour
 {
-    #region Event
-    public static event Action<bool> OnConnectionStatusChanged;
-    #endregion
+    public event Action<bool> OnConnectionStatusChanged;
 
-    private Dictionary<string, bool> connectedDevices = new Dictionary<string, bool>();
-
-    public Text deviceAdd;
-    public Text receivedData;
-    public GameObject scanedListContainer;
-    public GameObject pairedListContainer;
-    public GameObject deviceMACText;
-    public GameObject addDevice;
-
-    public GameObject scanedDevice;
-    public GameObject pairedDevice;
-
+    private Dictionary<string, bool> connectedDevices = new();
     private string currentConnectingMac = null;
-
     private bool _isConnected;
+
     public bool isConnected
     {
         get => _isConnected;
@@ -53,13 +41,25 @@ public class BluetoothManager : MonoBehaviour
                 _instance = FindObjectOfType<BluetoothManager>();
                 if (_instance == null)
                 {
-                    GameObject singletonObject = new GameObject(typeof(BluetoothManager).ToString());
-                    _instance = singletonObject.AddComponent<BluetoothManager>();
+                    GameObject obj = new GameObject(nameof(BluetoothManager));
+                    _instance = obj.AddComponent<BluetoothManager>();
                 }
             }
             return _instance;
         }
     }
+
+    public Text deviceAdd;
+    public Text receivedData;
+    public GameObject scanedListContainer;
+    public GameObject pairedListContainer;
+    public GameObject deviceMACText;
+    public GameObject addDevice;
+
+    public GameObject scanedDevice;
+    public GameObject pairedDevice;
+
+    public TextMeshProUGUI debugText;
 
     void Start()
     {
@@ -69,35 +69,35 @@ public class BluetoothManager : MonoBehaviour
 
     public void InitBluetooth()
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
-        if (!Permission.HasUserAuthorizedPermission(Permission.CoarseLocation)
-            || !Permission.HasUserAuthorizedPermission(Permission.FineLocation)
-            || !Permission.HasUserAuthorizedPermission("android.permission.BLUETOOTH_ADMIN")
-            || !Permission.HasUserAuthorizedPermission("android.permission.BLUETOOTH")
-            || !Permission.HasUserAuthorizedPermission("android.permission.BLUETOOTH_SCAN")
-            || !Permission.HasUserAuthorizedPermission("android.permission.BLUETOOTH_ADVERTISE")
-            || !Permission.HasUserAuthorizedPermission("android.permission.BLUETOOTH_CONNECT"))
+        string[] permissions = {
+            Permission.CoarseLocation,
+            Permission.FineLocation,
+            "android.permission.BLUETOOTH_ADMIN",
+            "android.permission.BLUETOOTH",
+            "android.permission.BLUETOOTH_SCAN",
+            "android.permission.BLUETOOTH_ADVERTISE",
+            "android.permission.BLUETOOTH_CONNECT"
+        };
+
+        List<string> toRequest = new();
+        foreach (string perm in permissions)
         {
-            Permission.RequestUserPermissions(new string[] {
-                            Permission.CoarseLocation,
-                            Permission.FineLocation,
-                            "android.permission.BLUETOOTH_ADMIN",
-                            "android.permission.BLUETOOTH",
-                            "android.permission.BLUETOOTH_SCAN",
-                            "android.permission.BLUETOOTH_ADVERTISE",
-                            "android.permission.BLUETOOTH_CONNECT"
-                        });
+            if (!Permission.HasUserAuthorizedPermission(perm))
+                toRequest.Add(perm);
         }
+
+        if (toRequest.Count > 0)
+            Permission.RequestUserPermissions(toRequest.ToArray());
 
         unity3dbluetoothplugin = new AndroidJavaClass("com.example.unity3dbluetoothplugin.BluetoothConnector");
         BluetoothConnector = unity3dbluetoothplugin.CallStatic<AndroidJavaObject>("getInstance");
     }
+
     public void StartScanDevices()
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
         foreach (Transform child in scanedListContainer.transform)
         {
@@ -109,8 +109,7 @@ public class BluetoothManager : MonoBehaviour
 
     public void StopScanDevices()
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
         BluetoothConnector.CallStatic("StopScanDevices");
     }
@@ -132,42 +131,36 @@ public class BluetoothManager : MonoBehaviour
         newDevice.name = data;
     }
 
-    //public void StartConnection(string text)
-    //{
-    //    if (Application.platform != RuntimePlatform.Android)
-    //        return;
-
-    //    string deviceMacAddress = text;
-
-    //    BluetoothConnector.CallStatic("StartConnection", deviceMacAddress);
-    //}
-
-    public void StartConnection(string text)
+    public void StartConnection(string mac)
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
-        string deviceMacAddress = text;
-        currentConnectingMac = deviceMacAddress;
-
-        BluetoothConnector.CallStatic("StartConnection", deviceMacAddress);
+        currentConnectingMac = mac;
+        BluetoothConnector.CallStatic("StartConnection", mac);
     }
-
 
     public void StopConnection()
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
         if (isConnected)
             BluetoothConnector.CallStatic("StopConnection");
     }
 
-    //public void ConnectionStatus(string status)
-    //{
-    //    Toast("Connection Status: " + status);
-    //    isConnected = status == "connected";
-    //}
+    public void ConnectionStatus(string status)
+    {
+        Toast("Connection Status: " + status);
+        isConnected = status == "connected";
+
+        if (isConnected && currentConnectingMac != null)
+        {
+            SavePairedDevice(currentConnectingMac);
+            currentConnectingMac = null;
+        }
+
+        ShowSavedDevices();
+    }
+
     private void SavePairedDevice(string mac)
     {
         if (DataManager.Instance.deviceData.ContainsKey(mac))
@@ -176,10 +169,8 @@ public class BluetoothManager : MonoBehaviour
             return;
         }
 
-        // 이름 가져오기: UI에 있는 이름 사용하거나 fallback
         string bleName = "UNKNOWN_DEVICE";
 
-        // UI에서 이름 찾기
         foreach (Transform child in scanedListContainer.transform)
         {
             if (child.name.StartsWith(mac))
@@ -206,27 +197,13 @@ public class BluetoothManager : MonoBehaviour
         DataManager.Instance.SaveData();
     }
 
-
-    public void ConnectionStatus(string status)
-    {
-        Toast("Connection Status: " + status);
-        isConnected = status == "connected";
-
-        if (isConnected && currentConnectingMac != null)
-        {
-            SavePairedDevice(currentConnectingMac);
-            currentConnectingMac = null; // ✅ 저장 후 초기화
-        }
-    }
     public void GetPairedDevices()
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
         Toast("📡 페어링된 기기 스캔 중...");
         string[] data = BluetoothConnector.CallStatic<string[]>("GetPairedDevices");
 
-        // UI 정리
         for (int i = pairedListContainer.transform.childCount - 1; i >= 0; i--)
         {
             Transform child = pairedListContainer.transform.GetChild(i);
@@ -243,12 +220,6 @@ public class BluetoothManager : MonoBehaviour
             if (BLEName == "null" || string.IsNullOrEmpty(BLEName))
                 BLEName = "알 수 없는 기기";
 
-            // UI 생성
-            GameObject newDevice = Instantiate(pairedDevice, pairedListContainer.transform);
-            newDevice.name = d;
-            newDevice.GetComponentInChildren<TextMeshProUGUI>().text = BLEName;
-
-            // 🔐 저장 처리: 페어링된 기기만 저장
             if (!DataManager.Instance.deviceData.ContainsKey(mac))
             {
                 var newDeviceData = new DeviceData
@@ -256,8 +227,8 @@ public class BluetoothManager : MonoBehaviour
                     Mac = mac,
                     index = DataManager.Instance.deviceData.Count + 1,
                     name = BLEName,
-                    description = " ",
-                    autoPaired = false
+                    description = "페어링됨",
+                    autoPaired = true
                 };
 
                 DataManager.Instance.deviceData[mac] = newDeviceData;
@@ -265,44 +236,19 @@ public class BluetoothManager : MonoBehaviour
             }
         }
 
-        // 마지막에 JSON으로 저장
-        DataManager.Instance.SaveData();
+        var sortedDevices = new List<DeviceData>(DataManager.Instance.deviceData.Values);
+        sortedDevices.Sort((a, b) => a.index.CompareTo(b.index));
 
+        foreach (var device in sortedDevices)
+        {
+            GameObject newDevice = Instantiate(pairedDevice, pairedListContainer.transform);
+            newDevice.name = device.Mac;
+            newDevice.GetComponentInChildren<TextMeshProUGUI>().text = string.IsNullOrEmpty(device.name) ? "알 수 없는 기기" : device.name;
+        }
+
+        DataManager.Instance.SaveData();
         addDevice.transform.SetAsLastSibling();
     }
-    //public void GetPairedDevices()
-    //{
-    //    if (Application.platform != RuntimePlatform.Android)
-    //        return;
-
-    //    Toast("pairedDevice스캔중");
-    //    string[] data = BluetoothConnector.CallStatic<string[]>("GetPairedDevices");
-
-    //    for (int i = pairedListContainer.transform.childCount - 1; i >= 0; i--)
-    //    {
-    //        Transform child = pairedListContainer.transform.GetChild(i);
-    //        if (!child.name.Contains("AddDevice"))
-    //            Destroy(child.gameObject);
-    //    }
-
-    //    foreach (var d in data)
-    //    {
-    //        Toast($"{d}");
-    //        int macLength = 18;
-    //        GameObject newDevice = Instantiate(pairedDevice, pairedListContainer.transform);
-
-    //        string BLEName = d.Substring(macLength).Trim().ToUpper();
-
-    //        if (BLEName == "null" || string.IsNullOrEmpty(BLEName))
-    //        {
-    //            BLEName = "알 수 없는 기기";
-    //        }
-
-    //        newDevice.name = d;
-    //        newDevice.GetComponentInChildren<TextMeshProUGUI>().text = BLEName;
-    //    }
-    //    addDevice.transform.SetAsLastSibling();
-    //}
 
     public void ReadData(string data)
     {
@@ -312,24 +258,32 @@ public class BluetoothManager : MonoBehaviour
 
     public void WriteData(string text)
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
         if (isConnected)
             BluetoothConnector.CallStatic("WriteData", text);
     }
 
-    public void Toast(string data)
+    public void Toast(string message)
     {
-        if (Application.platform != RuntimePlatform.Android)
-            return;
+        if (Application.platform != RuntimePlatform.Android) return;
 
-        BluetoothConnector.CallStatic("Toast", data);
+        BluetoothConnector.CallStatic("Toast", message);
     }
 
-    void Update()
+    public void ShowSavedDevices()
     {
+        string path = Path.Combine(Application.persistentDataPath, "device_data.json");
 
+        if (File.Exists(path))
+        {
+            string json = File.ReadAllText(path);
+            debugText.text = "🔍 저장된 JSON 내용:\n" + json;
+        }
+        else
+        {
+            debugText.text = "❌ 저장된 JSON 파일이 없습니다.";
+        }
     }
 
     void OnApplicationQuit()

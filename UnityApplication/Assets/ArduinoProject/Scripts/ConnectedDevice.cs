@@ -6,12 +6,12 @@ public class ConnectedDevice : MonoBehaviour
 
     private void OnEnable()
     {
-        BluetoothManager.OnConnectionStatusChanged += OnConnectionChanged;
+        BluetoothManager.Instance.OnConnectionStatusChanged += OnConnectionChanged;
     }
 
     private void OnDisable()
     {
-        BluetoothManager.OnConnectionStatusChanged -= OnConnectionChanged;
+        BluetoothManager.Instance.OnConnectionStatusChanged -= OnConnectionChanged;
     }
 
     private void OnConnectionChanged(bool isConnected)
