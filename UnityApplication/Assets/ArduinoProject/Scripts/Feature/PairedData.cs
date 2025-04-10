@@ -8,7 +8,6 @@ public class PairedData : MonoBehaviour
         foreach (var kv in DataManager.Instance.deviceData)
         {
             var d = kv.Value;
-            Debug.Log($"[{d.index}] {d.Mac} - {d.name} / Auto: {d.autoPaired}");
         }
     }
 
@@ -17,7 +16,6 @@ public class PairedData : MonoBehaviour
         if (DataManager.Instance.deviceData.TryGetValue(mac, out var data))
         {
             data.name = newName;
-            Debug.Log($"✅ {mac} 이름 변경: {newName}");
             DataManager.Instance.SaveData();
         }
     }
@@ -27,7 +25,6 @@ public class PairedData : MonoBehaviour
         if (DataManager.Instance.deviceData.TryGetValue(mac, out var data))
         {
             data.index = newIndex;
-            Debug.Log($"📌 {mac} index 변경: {newIndex}");
             DataManager.Instance.SaveData();
         }
     }
@@ -36,8 +33,7 @@ public class PairedData : MonoBehaviour
     {
         if (DataManager.Instance.deviceData.Remove(mac))
         {
-            Debug.Log($"❌ {mac} 기기 삭제됨");
-            ReorderIndices(); // 선택: index 재정렬
+            ReorderIndices();
             DataManager.Instance.SaveData();
         }
     }

@@ -16,7 +16,6 @@ public class Rename : MonoBehaviour
         if (DataManager.Instance.deviceData.TryGetValue(macAddress, out var data))
         {
             InputField.text = data.name;
-            
         }
     }
 

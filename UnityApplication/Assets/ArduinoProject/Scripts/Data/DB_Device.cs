@@ -11,11 +11,7 @@ public class DeviceData
     public string name;
     public string description;
     public bool autoPaired;
-
-    public override string ToString()
-    {
-        return $"[{index}] {name} ({Mac}) - {description} | Auto: {autoPaired}";
-    }
+    public bool connected;
 }
 
 [CreateAssetMenu(fileName = "DB_Device", menuName = "DB/Device")]
@@ -48,7 +44,8 @@ public class DB_Device : ScriptableObject
             newData.index = int.Parse(keyValues[nameof(newData.index)]);
             newData.name = keyValues[nameof(newData.name)];
             newData.description = keyValues[nameof(newData.description)];
-            newData.autoPaired = keyValues[nameof(newData.autoPaired)] == "1";
+            newData.autoPaired = keyValues[nameof(newData.autoPaired)] == "0";
+            newData.connected = keyValues[nameof(newData.connected)] == "0";
 
             DataManager.Instance.deviceData[newData.Mac] = newData;
         }
@@ -59,7 +56,6 @@ public class DB_Device : ScriptableObject
         string path = Path.Combine(Application.persistentDataPath, "deviceData.json");
         if (!File.Exists(path))
         {
-            Debug.LogWarning("📂 JSON 파일이 존재하지 않습니다. CSV에서 불러옵니다.");
             LoadFromCSV();
             return;
         }
@@ -72,7 +68,6 @@ public class DB_Device : ScriptableObject
         {
             DataManager.Instance.deviceData[device.Mac] = device;
         }
-        Debug.Log("📥 JSON 데이터 로드 완료");
     }
 
     public void SaveToJSON()
@@ -83,7 +78,5 @@ public class DB_Device : ScriptableObject
         string json = JsonUtility.ToJson(wrapper, true);
         string path = Path.Combine(Application.persistentDataPath, "deviceData.json");
         File.WriteAllText(path, json);
-
-        Debug.Log("💾 JSON 저장 완료: " + path);
     }
 }

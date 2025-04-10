@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UI;
 
 public class CircularUI : MonoBehaviour
@@ -53,5 +54,21 @@ public class CircularUI : MonoBehaviour
         Vector3 scale = loadingImage.rectTransform.localScale;
         scale.x = Mathf.Abs(scale.x) * (flipped ? -1 : 1);
         loadingImage.rectTransform.localScale = scale;
+    }
+
+    public void Active()
+    {
+        var Devices = new List<DeviceData>(DataManager.Instance.deviceData.Values);
+
+        foreach (DeviceData deviceData in Devices)
+        {
+            if (deviceData.Mac == this.name)
+            {
+                gameObject.SetActive(deviceData.connected);
+                return;
+            }
+        }
+
+        gameObject.SetActive(false);
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Mail;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Android;
@@ -12,6 +13,7 @@ public class BluetoothManager : MonoBehaviour
 
     private Dictionary<string, bool> connectedDevices = new();
     private string currentConnectingMac = null;
+    private string ConnetedMac = null;
     private bool _isConnected;
 
     public bool isConnected
@@ -49,7 +51,7 @@ public class BluetoothManager : MonoBehaviour
         }
     }
 
-    public Text deviceAdd;
+    public TMP_InputField sendData;
     public Text receivedData;
     public GameObject scanedListContainer;
     public GameObject pairedListContainer;
@@ -59,7 +61,6 @@ public class BluetoothManager : MonoBehaviour
     public GameObject scanedDevice;
     public GameObject pairedDevice;
 
-    public TextMeshProUGUI debugText;
 
     void Start()
     {
@@ -152,13 +153,13 @@ public class BluetoothManager : MonoBehaviour
         Toast("Connection Status: " + status);
         isConnected = status == "connected";
 
-        if (isConnected && currentConnectingMac != null)
+        if (isConnected)
         {
             SavePairedDevice(currentConnectingMac);
-            currentConnectingMac = null;
+            ConnetedMac = currentConnectingMac; 
         }
 
-        ShowSavedDevices();
+        isConnected = false;
     }
 
     private void SavePairedDevice(string mac)
@@ -228,40 +229,46 @@ public class BluetoothManager : MonoBehaviour
                     index = DataManager.Instance.deviceData.Count + 1,
                     name = BLEName,
                     description = "페어링됨",
-                    autoPaired = true
+                    autoPaired = false,
                 };
 
                 DataManager.Instance.deviceData[mac] = newDeviceData;
-                Debug.Log($"✅ 페어링 기기 저장됨: {mac} / {BLEName}");
             }
         }
-
-        var sortedDevices = new List<DeviceData>(DataManager.Instance.deviceData.Values);
-        sortedDevices.Sort((a, b) => a.index.CompareTo(b.index));
-
-        foreach (var device in sortedDevices)
-        {
-            GameObject newDevice = Instantiate(pairedDevice, pairedListContainer.transform);
-            newDevice.name = device.Mac;
-            newDevice.GetComponentInChildren<TextMeshProUGUI>().text = string.IsNullOrEmpty(device.name) ? "알 수 없는 기기" : device.name;
-        }
-
         DataManager.Instance.SaveData();
+
+        InitPairedDevice();
+
+        //var sortedDevices = new List<DeviceData>(DataManager.Instance.deviceData.Values);
+        //sortedDevices.Sort((a, b) => a.index.CompareTo(b.index));
+
+        //foreach (var device in sortedDevices)
+        //{
+        //    GameObject newDevice = Instantiate(pairedDevice, pairedListContainer.transform);
+        //    newDevice.name = device.Mac;
+        //    newDevice.GetComponentInChildren<TextMeshProUGUI>().text = string.IsNullOrEmpty(device.name) ? "알 수 없는 기기" : device.name;
+        //}
+
         addDevice.transform.SetAsLastSibling();
     }
 
     public void ReadData(string data)
     {
-        Debug.Log("BT Stream: " + data);
         receivedData.text = data;
     }
 
-    public void WriteData(string text)
+    public void WriteData(string txt)
     {
         if (Application.platform != RuntimePlatform.Android) return;
 
-        if (isConnected)
-            BluetoothConnector.CallStatic("WriteData", text);
+        BluetoothConnector.CallStatic("WriteData", txt);
+    }
+
+    public void testsss( )
+    {
+        string textToSend = sendData.text;
+
+        BluetoothConnector.CallStatic("WriteData", sendData.text);
     }
 
     public void Toast(string message)
@@ -271,20 +278,6 @@ public class BluetoothManager : MonoBehaviour
         BluetoothConnector.CallStatic("Toast", message);
     }
 
-    public void ShowSavedDevices()
-    {
-        string path = Path.Combine(Application.persistentDataPath, "device_data.json");
-
-        if (File.Exists(path))
-        {
-            string json = File.ReadAllText(path);
-            debugText.text = "🔍 저장된 JSON 내용:\n" + json;
-        }
-        else
-        {
-            debugText.text = "❌ 저장된 JSON 파일이 없습니다.";
-        }
-    }
 
     void OnApplicationQuit()
     {
@@ -292,5 +285,37 @@ public class BluetoothManager : MonoBehaviour
         {
             BluetoothConnector.CallStatic("StopConnection");
         }
+    }
+
+    private void InitPairedDevice()
+    {
+        DataManager.Instance.LoadData();
+
+        var sortedDevices = new List<DeviceData>(DataManager.Instance.deviceData.Values);
+        sortedDevices.Sort((a, b) => a.index.CompareTo(b.index));
+
+        foreach (var device in sortedDevices)
+        {
+            Transform existing = pairedListContainer.transform.Find(device.Mac);
+            if (existing != null)
+            {
+                var text = existing.GetComponentInChildren<TextMeshProUGUI>();
+                if (text != null)
+                {
+                    text.text = string.IsNullOrEmpty(device.name) ? "알 수 없는 기기" : device.name;
+                }
+            }
+
+            GameObject newDevice = Instantiate(pairedDevice, pairedListContainer.transform);
+            newDevice.name = device.Mac;
+
+            newDevice.GetComponentInChildren<TextMeshProUGUI>().text =
+                string.IsNullOrEmpty(device.name) ? "알 수 없는 기기" : device.name;
+
+            Toast(device.name);
+
+            newDevice.GetComponentInChildren<CircularUI>().gameObject.SetActive(true);
+        }
+
     }
 }
