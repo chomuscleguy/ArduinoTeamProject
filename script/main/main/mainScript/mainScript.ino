@@ -1,11 +1,16 @@
 #include <Servo.h>
 #include <SoftwareSerial.h>
-#include <Arduino_FreeRTOS.h>
+// #include <Arduino_FreeRTOS.h>
 
 // ---------- 핀 설정 ----------
-#define PIEZO 4
-#define LeftWheel 5
-#define RightWheel 6
+#define sensorFront A0
+#define sensorLeft A1
+#define sensorRight A2
+#define PIEZO 2
+#define motorB1B 3
+#define motorB1A 4
+#define motorA1B 5
+#define motorA1A 6
 #define SHOCK 7
 #define SERVO_PIN 8
 #define RELAY_PIN 9
@@ -28,23 +33,26 @@
 SoftwareSerial mySerial(12, 13);  // RX, TX
 Servo doorServo;
 
-TaskHandle_t vibrationTaskHandle = NULL;
+// TaskHandle_t vibrationTaskHandle = NULL;
 
 bool isDoorOpen = false;
 bool isAlarmOn = false;
 bool isAlarmLed = false;
 bool triggered = false;
+bool isAutoParking = false;
 unsigned int alarmLastToggle = 0;
 const int threshold = 1000;
 int speed = 0;
+const int thresholdDistance = 15;
 
 // ---------- 전역 함수 ----------
 void DoubleLED(int pin1, int pin2, int state);
 void BlinkLED(unsigned int lastToggle, int count, bool state);
 void EngineSound(int interval, int count);
-void MoveSound();
+void ParkingSound();
 void EmergencySound(int threshold);
-void PausevibrationTask();
+void AutoParking();
+// void PausevibrationTask();
 
 // ---------- 상태 인터페이스 ----------
 class IState {
@@ -148,12 +156,15 @@ public:
     BlinkLED(lastToggle, count, ledState);
     EngineSound(1200, 2);
     DoubleLED(L_LED, R_LED, HIGH);
-    PausevibrationTask();
+    // PausevibrationTask();
   }
 
   void update() override {
     BaseState::update();
     BlinkLED(lastToggle, count, ledState);
+    if (isAutoParking) {
+      AutoParking();
+    }
   }
 
   void handleInput(char input) override;
@@ -191,6 +202,11 @@ void EngineState::handleInput(char input) {
     case 'p':
       //시동끔
       fsm.changeState(&idleState);
+      break;
+    case 'a':
+      //자동주차
+      isAutoParking = true;
+      ParkingSound();
       break;
   }
 }
@@ -237,38 +253,36 @@ void EmergencySound(int threshold) {
   noTone(PIEZO);
 }
 
-void vibrationTask(void* pvParameters) {
-  (void)pvParameters;
+// void vibrationTask(void *pvParameters) {
+//   (void) pvParameters;
 
-  for (;;) {
-    int sensorValue = digitalRead(SHOCK);
-    Serial.print("센서 신호: ");
-    Serial.println(sensorValue);
+//   for (;;) {
+//     int sensorValue = digitalRead(SHOCK);
+//     Serial.print("센서 신호: ");
+//     Serial.println(sensorValue);
 
-    if (sensorValue == LOW && !triggered) {
-      Serial.println("충돌이 감지되었습니다!");
-      triggered = true;
+//     if (sensorValue == LOW && !triggered) {  // 보통 D0는 충격 시 LOW
+//       Serial.println("충돌이 감지되었습니다!");
+//       triggered = true;
+//       vTaskDelay(1000 / portTICK_PERIOD_MS);  // 1초 대기
+//     }
 
-      Serial.println("VibrationTask를 일시 중지합니다.");
-      vTaskSuspend(NULL);  // 자기 자신을 일시 중지
-    }
+//     if (sensorValue == HIGH) {
+//       triggered = false;  // 신호 회복되면 다시 감지 가능
+//     }
 
-    if (sensorValue == HIGH) {
-      triggered = false;
-    }
+//     vTaskDelay(50 / portTICK_PERIOD_MS);  // 빠른 루프 주기
+//   }
+// }
 
-    vTaskDelay(50 / portTICK_PERIOD_MS);
-  }
-}
+// void PausevibrationTask() {
+//   if (millis() > 5000) {
+//     Serial.println("5초 지남 - VibrationTask 다시 시작!");
+//     // vTaskResume(vibrationTaskHandle);
+//   }
+// }
 
-void PausevibrationTask() {
-  if (millis() > 5000) {
-    Serial.println("5초 지남 - VibrationTask 다시 시작!");
-    vTaskResume(vibrationTaskHandle);
-  }
-}
-
-void MoveSound() {
+void ParkingSound() {
   tone(PIEZO, NOTE_E5, 150);
   delay(200);
   tone(PIEZO, NOTE_DS5, 150);
@@ -330,40 +344,6 @@ void MoveSound() {
   noTone(PIEZO);
 }
 
-void forward() {
-  digitalWrite(LeftWheel, LOW);
-  analogWrite(LeftWheel, speed);
-  digitalWrite(RightWheel, LOW);
-  analogWrite(RightWheel, speed);
-}
-
-void backward() {
-  digitalWrite(LeftWheel, HIGH);
-  analogWrite(LeftWheel, 255 - speed);
-  digitalWrite(RightWheel, HIGH);
-  analogWrite(RightWheel, 255 - speed);
-}
-
-void turnLeft() {
-  digitalWrite(LeftWheel, LOW);
-  analogWrite(LeftWheel, speed);
-  digitalWrite(RightWheel, HIGH);
-  analogWrite(RightWheel, 255 - speed);
-}
-
-void turnRight() {
-  digitalWrite(LeftWheel, HIGH);
-  analogWrite(LeftWheel, 255 - speed);
-  digitalWrite(RightWheel, LOW);
-  analogWrite(RightWheel, speed);
-}
-
-void stop() {
-  digitalWrite(LeftWheel, LOW);
-  analogWrite(LeftWheel, 0);
-  digitalWrite(RightWheel, LOW);
-  analogWrite(RightWheel, 0);
-}
 // ---------- 라이프 사이클 ----------
 void setup() {
   Serial.begin(9600);
@@ -373,25 +353,70 @@ void setup() {
   pinMode(PIEZO, OUTPUT);
   pinMode(L_LED, OUTPUT);
   pinMode(R_LED, OUTPUT);
-  pinMode(LeftWheel, OUTPUT);
-  pinMode(RightWheel, OUTPUT);
+  pinMode(motorA1A, OUTPUT);
+  pinMode(motorA1B, OUTPUT);
+  pinMode(motorB1A, OUTPUT);
+  pinMode(motorB1B, OUTPUT);
   pinMode(SHOCK, INPUT);
 
   doorServo.attach(SERVO_PIN);
   doorServo.write(90);
 
-  xTaskCreate(
-    vibrationTask,
-    "VibrationTask",
-    128,
-    NULL,
-    1,
-    &vibrationTaskHandle);
-  
-  Serial.println("작동");
+  // xTaskCreate(
+  //   vibrationTask,
+  //   "VibrationTask",
+  //   128,
+  //   NULL,
+  //   1,
+  //   NULL
+  // );
   fsm.changeState(&idleState);
 }
 
 void loop() {
   fsm.update();
+}
+
+void AutoParking() {
+  int analogFront = analogRead(sensorFront);
+  int analogLeft = analogRead(sensorLeft);
+  int analogRight = analogRead(sensorRight);
+
+  // 아날로그 → 거리 변환 (센서에 따라 보정 필요)
+  float distanceFront = 4800.0 / analogFront;
+  float distanceLeft = 4800.0 / analogLeft;
+  float distanceRight = 4800.0 / analogRight;
+
+  // 디버깅용 출력
+  Serial.print("Front: ");
+  Serial.print(distanceFront);
+  Serial.print(" cm, Left: ");
+  Serial.print(distanceLeft);
+  Serial.print(" cm, Right: ");
+  Serial.println(distanceRight);
+
+  // 15cm 이하일 경우 장애물로 판단 → 정지
+  if (distanceFront <= thresholdDistance || distanceLeft <= thresholdDistance || distanceRight <= thresholdDistance) {
+    stopMotors();
+    isAutoParking = false;
+    noTone(PIEZO);
+  } else {
+    moveForward();
+  }
+
+  delay(100);
+}
+
+void moveForward() {
+  digitalWrite(motorA1A, HIGH);
+  digitalWrite(motorA1B, LOW);
+  digitalWrite(motorB1A, HIGH);
+  digitalWrite(motorB1B, LOW);
+}
+
+void stopMotors() {
+  digitalWrite(motorA1A, LOW);
+  digitalWrite(motorA1B, LOW);
+  digitalWrite(motorB1A, LOW);
+  digitalWrite(motorB1B, LOW);
 }
