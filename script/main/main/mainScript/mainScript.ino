@@ -58,25 +58,30 @@ void vibration();
 // ---------- 상태 인터페이스 ----------
 class IState {
 public:
-  virtual void enter() {}
-  virtual void update() {}
-  virtual void handleInput(char input) {}
-  virtual void exit() {}
+  virtual void enter() = 0;
+  virtual void update() = 0;
+  virtual void handleInput(char input) = 0;
+  virtual void exit() = 0;
 };
 
 // ---------- FSM 컨트롤러 ----------
-class FSMController {
+class StateMachine {
 private:
   IState* currentState;
 
 public:
-  FSMController()
-    : currentState(nullptr) {}
+  StateMachine()
+    : currentState(nullptr) {
+  }
 
   void changeState(IState* newState) {
-    if (currentState) currentState->exit();
+    if (currentState) {
+      currentState->exit();
+    }
     currentState = newState;
-    if (currentState) currentState->enter();
+    if (currentState) {
+      currentState->enter();
+    }
   }
 
   void update() {
@@ -88,12 +93,15 @@ public:
   }
 };
 
-FSMController fsm;
+StateMachine fsm;
 
 // ---------- BaseState ----------
 class BaseState : public IState {
 public:
-  void handleInput(char input) override {
+  virtual void enter() override {
+    // 필요한 초기화 작업
+  }
+  virtual void handleInput(char input) override {
     // 도어 제어
     if (input == '1' && isDoorOpen) {
       isDoorOpen = false;
@@ -105,17 +113,20 @@ public:
       Serial.println("문 열림");
     }
   }
-  void update() {
+  virtual void update() override {
     if (mySerial.available()) {
       char c = mySerial.read();
       fsm.handleInput(c);
     }
-
     if (isAlarmOn && millis() - alarmLastToggle > 300) {
       alarmLastToggle = millis();
       isAlarmLed = !isAlarmLed;
       DoubleLED(L_LED, R_LED, isAlarmLed);
     }
+  }
+
+  virtual void exit() override {
+    // 필요 시 상태 종료 작업
   }
 };
 
@@ -150,6 +161,8 @@ public:
     if (sensorValue < threshold) {
       triggered = false;
     }
+  }
+  void exit() override {
   }
 };
 
@@ -219,7 +232,7 @@ void EngineState::handleInput(char input) {
       //ParkingSound();
       direction = 0;
       break;
-      case 'b':
+    case 'b':
       isAutoParking = true;
       direction = 1;
   }
