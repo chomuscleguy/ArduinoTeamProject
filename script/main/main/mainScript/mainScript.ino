@@ -11,7 +11,7 @@
 #define motorB1A 4
 #define motorA1B 5
 #define motorA1A 6
-#define SHOCK 7
+#define SHOCK A5
 #define SERVO_PIN 8
 #define RELAY_PIN 9
 #define L_LED 10
@@ -33,8 +33,6 @@
 SoftwareSerial mySerial(12, 13);  // RX, TX
 Servo doorServo;
 
-// TaskHandle_t vibrationTaskHandle = NULL;
-
 bool isDoorOpen = false;
 bool isAlarmOn = false;
 bool isAlarmLed = false;
@@ -44,6 +42,7 @@ unsigned int alarmLastToggle = 0;
 const int threshold = 1000;
 int speed = 0;
 int sensorValue = 0;
+int direction = -1;
 const int thresholdDistance = 15;
 
 
@@ -55,7 +54,6 @@ void ParkingSound();
 void EmergencySound(int threshold);
 void AutoParking();
 void vibration();
-// void PausevibrationTask();
 
 // ---------- 상태 인터페이스 ----------
 class IState {
@@ -137,19 +135,18 @@ public:
     digitalWrite(RELAY_PIN, LOW);
     BlinkLED(lastToggle, count, ledState);
     EngineSound(1000, 3);
-    // vTaskResume(vibrationTaskHandle);
+    DoubleLED(L_LED, R_LED, LOW);
   }
 
   void handleInput(char input) override;
 
   void update() override {
     BaseState::update();
-    EmergencySound(threshold);
     sensorValue = analogRead(SHOCK);
-    Serial.print("센서 신호: ");
-    Serial.println(sensorValue);
-    if (sensorValue >= threshold && !triggered)
+    if (sensorValue >= threshold && !triggered) {
       vibration();
+      EmergencySound(threshold);
+    }
     if (sensorValue < threshold) {
       triggered = false;
     }
@@ -185,7 +182,6 @@ public:
   void exit() override {
     Serial.println("🛑 엔진 종료");
     digitalWrite(RELAY_PIN, LOW);
-    DoubleLED(L_LED, R_LED, LOW);
   }
 };
 
@@ -202,6 +198,7 @@ void IdleState::handleInput(char input) {
       break;
     case '9':
       isAlarmOn = true;
+      EmergencySound(0);
       break;
     case '0':
       isAlarmOn = false;
@@ -216,11 +213,15 @@ void EngineState::handleInput(char input) {
       //시동끔
       fsm.changeState(&idleState);
       break;
-    case 'a':
+    case 'f':
       //자동주차
       isAutoParking = true;
-      ParkingSound();
+      //ParkingSound();
+      direction = 0;
       break;
+      case 'b':
+      isAutoParking = true;
+      direction = 1;
   }
 }
 
@@ -248,52 +249,19 @@ void EngineSound(int interval, int count) {
 }
 
 void EmergencySound(int threshold) {
-  int sensorValue = analogRead(SHOCK);
-
-  if (sensorValue < threshold) return;
   if (isAlarmOn) {
     for (int i = 0; i < 10; i++) {
       if (isAlarmOn == false) {
         noTone(PIEZO);
         break;
       }
-
       tone(PIEZO, 1000, 200);
       delay(250);
     }
   }
-
+  isAlarmOn = false;
   noTone(PIEZO);
 }
-
-// void vibrationTask(void *pvParameters) {
-//   (void) pvParameters;
-
-//   for (;;) {
-//     int sensorValue = digitalRead(SHOCK);
-//     Serial.print("센서 신호: ");
-//     Serial.println(sensorValue);
-
-//     if (sensorValue == LOW && !triggered) {  // 보통 D0는 충격 시 LOW
-//       Serial.println("충돌이 감지되었습니다!");
-//       triggered = true;
-//       vTaskDelay(1000 / portTICK_PERIOD_MS);  // 1초 대기
-//     }
-
-//     if (sensorValue == HIGH) {
-//       triggered = false;  // 신호 회복되면 다시 감지 가능
-//     }
-
-//     vTaskDelay(50 / portTICK_PERIOD_MS);  // 빠른 루프 주기
-//   }
-// }
-
-// void PausevibrationTask() {
-//   if (millis() > 5000) {
-//     Serial.println("5초 지남 - VibrationTask 다시 시작!");
-//     // vTaskResume(vibrationTaskHandle);
-//   }
-// }
 
 void ParkingSound() {
   tone(PIEZO, NOTE_E5, 150);
@@ -375,14 +343,6 @@ void setup() {
   doorServo.attach(SERVO_PIN);
   doorServo.write(90);
 
-  // xTaskCreate(
-  //   vibrationTask,
-  //   "VibrationTask",
-  //   128,
-  //   NULL,
-  //   1,
-  //   NULL
-  // );
   fsm.changeState(&idleState);
 }
 
@@ -413,8 +373,13 @@ void AutoParking() {
     stopMotors();
     isAutoParking = false;
     noTone(PIEZO);
+    direction = -1;
   } else {
-    moveForward();
+    if (direction == 0) {
+      moveForward();
+    } else if (direction == 1) {
+      moveBackward();
+    }
   }
 
   delay(100);
@@ -427,6 +392,13 @@ void moveForward() {
   digitalWrite(motorB1B, LOW);
 }
 
+void moveBackward() {
+  digitalWrite(motorA1A, LOW);
+  digitalWrite(motorA1B, HIGH);
+  digitalWrite(motorB1A, LOW);
+  digitalWrite(motorB1B, HIGH);
+}
+
 void stopMotors() {
   digitalWrite(motorA1A, LOW);
   digitalWrite(motorA1B, LOW);
@@ -434,9 +406,8 @@ void stopMotors() {
   digitalWrite(motorB1B, LOW);
 }
 
-
-
 void vibration() {
   Serial.println("충돌이 감지되었습니다!");
+  isAlarmOn = true;
   triggered = true;
 }
