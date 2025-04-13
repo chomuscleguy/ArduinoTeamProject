@@ -43,7 +43,9 @@ bool isAutoParking = false;
 unsigned int alarmLastToggle = 0;
 const int threshold = 1000;
 int speed = 0;
+int sensorValue = 0;
 const int thresholdDistance = 15;
+
 
 // ---------- 전역 함수 ----------
 void DoubleLED(int pin1, int pin2, int state);
@@ -52,6 +54,7 @@ void EngineSound(int interval, int count);
 void ParkingSound();
 void EmergencySound(int threshold);
 void AutoParking();
+void vibration();
 // void PausevibrationTask();
 
 // ---------- 상태 인터페이스 ----------
@@ -126,6 +129,8 @@ private:
   unsigned int lastToggle = 0;
   int count = 2;
   bool ledState = false;
+  unsigned long lastCollisionTime = 0;
+  const unsigned long collisionDelay = 1000;
 public:
   void enter() override {
     Serial.println("🔵 상태: Idle (엔진 OFF)");
@@ -140,6 +145,14 @@ public:
   void update() override {
     BaseState::update();
     EmergencySound(threshold);
+    sensorValue = analogRead(SHOCK);
+    Serial.print("센서 신호: ");
+    Serial.println(sensorValue);
+    if (sensorValue >= threshold && !triggered)
+      vibration();
+    if (sensorValue < threshold) {
+      triggered = false;
+    }
   }
 };
 
@@ -419,4 +432,11 @@ void stopMotors() {
   digitalWrite(motorA1B, LOW);
   digitalWrite(motorB1A, LOW);
   digitalWrite(motorB1B, LOW);
+}
+
+
+
+void vibration() {
+  Serial.println("충돌이 감지되었습니다!");
+  triggered = true;
 }
