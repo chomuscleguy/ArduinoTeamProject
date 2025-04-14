@@ -72,7 +72,8 @@ DC모터와 모터드라이브를 통해 전후진
             IState  
               ↓  
           BaseState                        StateMachine  
-        ↙           ↘              (상태머신을 컨트롤하며 함수가 위치)  
+        ↙           ↘              (상태머신을 컨트롤하는 함수가 위치)  
     IdleState     EngineState  
 
 
+LED와 PIEZO부저 소리를 제어할 때 delay 사용을 자제하며, millis로 측정하여 동적으로 실행할 수 있도록 구성
