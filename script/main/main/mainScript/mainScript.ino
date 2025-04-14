@@ -121,7 +121,7 @@ public:
     if (isAlarmOn && millis() - alarmLastToggle > 300) {
       alarmLastToggle = millis();
       isAlarmLed = !isAlarmLed;
-      DoubleLED(L_LED, R_LED, isAlarmLed);
+      
     }
   }
 
@@ -142,11 +142,10 @@ private:
   const unsigned long collisionDelay = 1000;
 public:
   void enter() override {
-    Serial.println("🔵 상태: Idle (엔진 OFF)");
     digitalWrite(RELAY_PIN, LOW);
     BlinkLED(lastToggle, count, ledState);
     EngineSound(1000, 3);
-    DoubleLED(L_LED, R_LED, LOW);
+    
   }
 
   void handleInput(char input) override;
@@ -174,12 +173,10 @@ private:
 
 public:
   void enter() override {
-    Serial.println("🟢 상태: Engine ON");
     digitalWrite(RELAY_PIN, HIGH);
     BlinkLED(lastToggle, count, ledState);
     EngineSound(1200, 2);
     DoubleLED(L_LED, R_LED, HIGH);
-    // PausevibrationTask();
   }
 
   void update() override {
@@ -193,7 +190,7 @@ public:
   void handleInput(char input) override;
 
   void exit() override {
-    Serial.println("🛑 엔진 종료");
+    DoubleLED(L_LED, R_LED, LOW);
     digitalWrite(RELAY_PIN, LOW);
   }
 };
@@ -266,14 +263,18 @@ void EmergencySound(int threshold) {
     for (int i = 0; i < 10; i++) {
       if (isAlarmOn == false) {
         noTone(PIEZO);
+        DoubleLED(L_LED, R_LED, LOW);
         break;
       }
       tone(PIEZO, 1000, 200);
+      DoubleLED(L_LED, R_LED, HIGH);
       delay(250);
+      DoubleLED(L_LED, R_LED, LOW);
     }
   }
-  isAlarmOn = false;
   noTone(PIEZO);
+  DoubleLED(L_LED, R_LED, LOW);
+  isAlarmOn = false;
 }
 
 void ParkingSound() {
@@ -373,14 +374,6 @@ void AutoParking() {
   float distanceLeft = 4800.0 / analogLeft;
   float distanceRight = 4800.0 / analogRight;
 
-  // 디버깅용 출력
-  Serial.print("Front: ");
-  Serial.print(distanceFront);
-  Serial.print(" cm, Left: ");
-  Serial.print(distanceLeft);
-  Serial.print(" cm, Right: ");
-  Serial.println(distanceRight);
-
   // 15cm 이하일 경우 장애물로 판단 → 정지
   if (distanceFront <= thresholdDistance || distanceLeft <= thresholdDistance || distanceRight <= thresholdDistance) {
     stopMotors();
@@ -420,7 +413,6 @@ void stopMotors() {
 }
 
 void vibration() {
-  Serial.println("충돌이 감지되었습니다!");
   isAlarmOn = true;
   triggered = true;
 }
