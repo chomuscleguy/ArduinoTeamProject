@@ -3,8 +3,8 @@
 // #include <Arduino_FreeRTOS.h>
 
 // ---------- 핀 설정 ----------
-#define sensorFront A0
-#define sensorLeft A1
+#define sensorFront A1
+#define sensorBack A0
 #define sensorRight A2
 #define PIEZO 2
 #define motorB1B 3
@@ -37,23 +37,57 @@ bool isDoorOpen = false;
 bool isAlarmOn = false;
 bool isAlarmLed = false;
 bool triggered = false;
+bool ledState = false;
 bool isAutoParking = false;
-unsigned int alarmLastToggle = 0;
+bool toggle = false;
+unsigned int lastToggle = 0;
 const int threshold = 1000;
 int speed = 0;
 int sensorValue = 0;
 int direction = -1;
+int soundCount = 0;
 const int thresholdDistance = 15;
+// BlinkLED 전용 변수
+bool isBlinking = false;
+int blinkTargetCount = 0;
+int blinkCurrentCount = 0;
+unsigned long blinkLastTime = 0;
+bool blinkLedState = false;
 
+const int melody[] = {
+  NOTE_E5, NOTE_DS5, NOTE_E5, NOTE_DS5, NOTE_E5,
+  NOTE_B4, NOTE_D5, NOTE_C5, NOTE_A4,
+  NOTE_C4, NOTE_E4, NOTE_A4, NOTE_B4,
+  NOTE_E4, NOTE_GS4, NOTE_B4, NOTE_C5,
+  NOTE_E4, NOTE_E5, NOTE_DS5, NOTE_E5, NOTE_DS5,
+  NOTE_E5, NOTE_B4, NOTE_D5, NOTE_C5, NOTE_A4
+};
+
+const int noteDurations[] = {
+  150, 200, 150, 200, 150,
+  200, 200, 200, 350,
+  150, 200, 150, 350,
+  150, 200, 150, 350,
+  150, 200, 150, 200, 150,
+  200, 200, 200, 200, 350
+};
+
+const int totalNotes = sizeof(melody) / sizeof(melody[0]);
+
+int currentNoteIndex = 0;
+unsigned long lastNoteTime = 0;
+bool isPlayingParkingSound = false;
 
 // ---------- 전역 함수 ----------
 void DoubleLED(int pin1, int pin2, int state);
-void BlinkLED(unsigned int lastToggle, int count, bool state);
+void BlinkLED(int count);
 void EngineSound(int interval, int count);
 void ParkingSound();
-void EmergencySound(int threshold);
+void EmergencySound();
 void AutoParking();
 void vibration();
+void startBlinking(int count);
+void updateBlinking();
 
 // ---------- 상태 인터페이스 ----------
 class IState {
@@ -118,10 +152,13 @@ public:
       char c = mySerial.read();
       fsm.handleInput(c);
     }
-    if (isAlarmOn && millis() - alarmLastToggle > 300) {
-      alarmLastToggle = millis();
-      isAlarmLed = !isAlarmLed;
-      
+    if (isAlarmOn) {
+      if (millis() - lastToggle > 300) {
+        lastToggle = millis();
+        isAlarmLed = !isAlarmLed;
+      } else if (!isAlarmOn) {
+        lastToggle = 0;
+      }
     }
   }
 
@@ -135,31 +172,29 @@ class EngineState;
 
 class IdleState : public BaseState {
 private:
-  unsigned int lastToggle = 0;
-  int count = 2;
-  bool ledState = false;
   unsigned long lastCollisionTime = 0;
   const unsigned long collisionDelay = 1000;
 public:
   void enter() override {
     digitalWrite(RELAY_PIN, LOW);
-    BlinkLED(lastToggle, count, ledState);
     EngineSound(1000, 3);
-    
+    startBlinking(2);
   }
 
   void handleInput(char input) override;
 
   void update() override {
     BaseState::update();
+    updateBlinking();
     sensorValue = analogRead(SHOCK);
     if (sensorValue >= threshold && !triggered) {
       vibration();
-      EmergencySound(threshold);
+      isAlarmOn = true;
     }
     if (sensorValue < threshold) {
       triggered = false;
     }
+    EmergencySound();
   }
   void exit() override {
   }
@@ -167,21 +202,17 @@ public:
 
 class EngineState : public BaseState {
 private:
-  unsigned int lastToggle = 0;
-  int count = 2;
-  bool ledState = false;
-
 public:
   void enter() override {
     digitalWrite(RELAY_PIN, HIGH);
-    BlinkLED(lastToggle, count, ledState);
     EngineSound(1200, 2);
-    DoubleLED(L_LED, R_LED, HIGH);
+    ledState = true;
+    startBlinking(3);
   }
 
   void update() override {
     BaseState::update();
-    BlinkLED(lastToggle, count, ledState);
+    updateBlinking();
     if (isAutoParking) {
       AutoParking();
     }
@@ -208,7 +239,6 @@ void IdleState::handleInput(char input) {
       break;
     case '9':
       isAlarmOn = true;
-      EmergencySound(0);
       break;
     case '0':
       isAlarmOn = false;
@@ -223,14 +253,16 @@ void EngineState::handleInput(char input) {
       //시동끔
       fsm.changeState(&idleState);
       break;
-    case 'f':
+    case 'b':
       //자동주차
       isAutoParking = true;
+      isPlayingParkingSound = true;
       //ParkingSound();
       direction = 0;
       break;
-    case 'b':
+    case 'f':
       isAutoParking = true;
+      isPlayingParkingSound = true;
       direction = 1;
   }
 }
@@ -241,15 +273,6 @@ void DoubleLED(int pin1, int pin2, int state) {
   digitalWrite(pin2, state);
 }
 
-void BlinkLED(unsigned int lastToggle, int count, bool state) {
-  if (millis() - lastToggle > 250 && count) {
-    lastToggle = millis();
-    state = !state;
-    DoubleLED(L_LED, R_LED, state);
-    count--;
-  }
-}
-
 void EngineSound(int interval, int count) {
   for (int i = 0; i < count; i++) {
     tone(PIEZO, interval, 100);
@@ -258,85 +281,88 @@ void EngineSound(int interval, int count) {
   noTone(PIEZO);
 }
 
-void EmergencySound(int threshold) {
-  if (isAlarmOn) {
-    for (int i = 0; i < 10; i++) {
-      if (isAlarmOn == false) {
-        noTone(PIEZO);
-        DoubleLED(L_LED, R_LED, LOW);
-        break;
-      }
-      tone(PIEZO, 1000, 200);
-      DoubleLED(L_LED, R_LED, HIGH);
-      delay(250);
+void startBlinking(int count) {
+  isBlinking = true;
+  blinkTargetCount = count;
+  blinkCurrentCount = 0;
+  blinkLastTime = millis();
+  blinkLedState = false;
+}
+
+void updateBlinking() {
+  if (!isBlinking) return;
+
+  unsigned long now = millis();
+  if (now - blinkLastTime >= 250) {
+    blinkLastTime = now;
+    blinkLedState = !blinkLedState;
+    DoubleLED(L_LED, R_LED, blinkLedState);
+
+    if (blinkLedState) {  // ON일 때만 카운트 증가
+      blinkCurrentCount++;
+      Serial.println(blinkCurrentCount);
+    }
+
+    if (blinkCurrentCount >= blinkTargetCount) {
+      isBlinking = false;
       DoubleLED(L_LED, R_LED, LOW);
     }
   }
-  noTone(PIEZO);
-  DoubleLED(L_LED, R_LED, LOW);
-  isAlarmOn = false;
 }
 
-void ParkingSound() {
-  tone(PIEZO, NOTE_E5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_DS5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_E5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_DS5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_E5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_B4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_D5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_C5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_A4, 300);
-  delay(350);
+void EmergencySound() {
+  if (!isAlarmOn) {
+    DoubleLED(L_LED, R_LED, LOW);
+    return;
+  }
 
-  tone(PIEZO, NOTE_C4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_E4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_A4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_B4, 300);
-  delay(350);
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastToggle >= 250 && soundCount < 10) {
+    lastToggle = currentMillis;
 
-  tone(PIEZO, NOTE_E4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_GS4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_B4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_C5, 300);
-  delay(350);
+    tone(PIEZO, 1000, 200);
+    ledState = !ledState;
+    DoubleLED(L_LED, R_LED, ledState);
 
-  tone(PIEZO, NOTE_E4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_E5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_DS5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_E5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_DS5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_E5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_B4, 150);
-  delay(200);
-  tone(PIEZO, NOTE_D5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_C5, 150);
-  delay(200);
-  tone(PIEZO, NOTE_A4, 300);
-  delay(350);
+    soundCount++;
+  }
 
-  noTone(PIEZO);
+  if (soundCount >= 10) {
+    noTone(PIEZO);
+    DoubleLED(L_LED, R_LED, LOW);
+    isAlarmOn = false;
+    soundCount = 0;
+    lastToggle = 0;
+  }
+}
+
+void updateParkingSound() {
+  if (!isPlayingParkingSound) {
+    currentNoteIndex = 0;
+    return;
+  }
+
+  unsigned long currentMillis = millis();
+  int duration = noteDurations[currentNoteIndex];
+
+  if (currentMillis - lastNoteTime >= duration) {
+    currentNoteIndex++;
+
+    if (currentNoteIndex >= totalNotes) {
+      noTone(PIEZO);
+      currentNoteIndex = 0;
+    }
+
+    tone(PIEZO, melody[currentNoteIndex], noteDurations[currentNoteIndex]);
+    lastNoteTime = currentMillis;
+  }
+}
+
+void startParkingSound() {
+  isPlayingParkingSound = true;
+  currentNoteIndex = 0;
+  lastNoteTime = millis();
+  tone(PIEZO, melody[0], noteDurations[0]);
 }
 
 // ---------- 라이프 사이클 ----------
@@ -366,26 +392,25 @@ void loop() {
 
 void AutoParking() {
   int analogFront = analogRead(sensorFront);
-  int analogLeft = analogRead(sensorLeft);
+  int analogBack = analogRead(sensorBack);
   int analogRight = analogRead(sensorRight);
 
-  // 아날로그 → 거리 변환 (센서에 따라 보정 필요)
   float distanceFront = 4800.0 / analogFront;
-  float distanceLeft = 4800.0 / analogLeft;
+  float distanceBack = 4800.0 / analogBack;
   float distanceRight = 4800.0 / analogRight;
 
-  // 15cm 이하일 경우 장애물로 판단 → 정지
-  if (distanceFront <= thresholdDistance || distanceLeft <= thresholdDistance || distanceRight <= thresholdDistance) {
+  if (direction == 0 && distanceFront > thresholdDistance) {
+    moveForward();
+    updateParkingSound();
+  } else if (direction == 1 && distanceBack > thresholdDistance) {
+    moveBackward();
+    updateParkingSound();
+  } else {
     stopMotors();
+    isPlayingParkingSound = false;
     isAutoParking = false;
     noTone(PIEZO);
     direction = -1;
-  } else {
-    if (direction == 0) {
-      moveForward();
-    } else if (direction == 1) {
-      moveBackward();
-    }
   }
 
   delay(100);
