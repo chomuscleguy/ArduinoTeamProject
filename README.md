@@ -1,31 +1,31 @@
 # 프로젝트 개요
-### 컨벤션
-#### 깃컨벤션
-### 커밋은 기능별로 구현이 되면 꼭 커밋하고 알려주셔야 합니다.
+## 컨벤션
+### 깃컨벤션
+#### 커밋은 기능별로 구현이 되면 꼭 커밋하고 알려주셔야 합니다.
 ---
-### Develop Branch
+#### Develop Branch
 - 모든 작업은 Main이 아닌 Develop이라는 보조 Branch를 생성하여 해당 브랜치의 하위에서 작업
 - 제품이 완성 되었을 때만 Main에 Merge
 ---
-### Branch 생성 기준
+#### Branch 생성 기준
 ex ) LJH-GameManager-InitGame
 이름-Class-기능
 - 브랜치는 각 클래스 또는 더 작은 범위로 하여 해당 메서드 기능이 문제 없이 작동하면 커밋하여 프로젝트를 지속적으로 최신화 해야합니다.
 ---
-### Commit, PR, Merge
+#### Commit, PR, Merge
 - 해당 작업을 수행 하실때는 꼭 팀원 전체에 공유가 되어야합니다.
 - 해당 메세지를 받으신 팀원분들 전원은 꼭 브랜치를 최신화 해주셔야 합니다.
 ---
-### Commit Message
+#### Commit Message
 - Summary를 꼭 작성해주시기 바랍니다.
 - Message는 해당 커밋에서 바뀐것 아니면, 해당 커밋을 받는 팀원들이 참고해야하는 참고사항을 꼭 기입해주세요
 ---
-### Summary [Head]
+#### Summary [Head]
 [💫 Feature] : 새로운 클래스 작성
 [🐞 BugFix] : 기존 코드의 버그를 수정
 [➕ Add] : 기존 기능에 추가적인 확장 기능을 제공
 [👨🏻‍🚒 HOTFIX] : 심각하거나 즉각 해결해야 하는 내용이 있을때
-#### 코드컨벤션
+### 코드컨벤션
 https://docs.arduino.cc/learn/contributions/arduino-writing-style-guide/  
 공식 도큐먼트 스타일 가이드 참고  
   
@@ -65,4 +65,14 @@ DC모터와 모터드라이브를 통해 전후진
 - 브레드보드 * 2
 ### 회로도
 ![회로도](https://github.com/chomuscleguy/ArduinoTeamProject/blob/main/Image/KakaoTalk_20250414_092053239.png?raw=true)
+
+## 소스코드  
+디자인 패턴인 상태패턴을 사용하여 FSM을 구성
+
+            IState  
+              ↓  
+          BaseState                        StateMachine  
+        ↙           ↘              (상태머신을 컨트롤하며 함수가 위치)  
+    IdleState     EngineState  
+
 
