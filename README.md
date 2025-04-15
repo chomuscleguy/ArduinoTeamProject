@@ -23,10 +23,10 @@ ex ) LJH-GameManager-InitGame
 - Message는 해당 커밋에서 바뀐것 아니면, 해당 커밋을 받는 팀원들이 참고해야하는 참고사항을 꼭 기입해주세요
 ---
 #### Summary [Head]
-[💫 Feature] : 새로운 클래스 작성
-[🐞 BugFix] : 기존 코드의 버그를 수정
-[➕ Add] : 기존 기능에 추가적인 확장 기능을 제공
-[👨🏻‍🚒 HOTFIX] : 심각하거나 즉각 해결해야 하는 내용이 있을때
+[💫 Feature] : 새로운 클래스 작성  
+[🐞 BugFix] : 기존 코드의 버그를 수정  
+[➕ Add] : 기존 기능에 추가적인 확장 기능을 제공  
+[👨🏻‍🚒 HOTFIX] : 심각하거나 즉각 해결해야 하는 내용이 있을때  
 ### 코드컨벤션
 https://docs.arduino.cc/learn/contributions/arduino-writing-style-guide/  
 공식 도큐먼트 스타일 가이드 참고  
